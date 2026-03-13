@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  # 1. Veritabanı Servisi (PostgreSQL)
+  db:
+    image: postgres:15-alpine
+    container_name: pg_database
+    restart: always
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydatabase
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data # Konteyner kapansa bile verilerin silinmemesi için
+
+  # 2. Go Backend Servisi
+  backend:
+    build:
+      context: ./backend # Go projenin bulunduğu klasörün adı
+      dockerfile: Dockerfile
+    container_name: go_backend
+    restart: always
+    ports:
+      - "8080:8080" # Go uygulamasının çalıştığı port (kendi portuna göre değiştirebilirsin)
+    environment:
+      # Go'nun veritabanına bağlanması için gereken adres ('db' ismi yukarıdaki servis adından gelir)
+      DATABASE_URL: postgres://myuser:mypassword@db:5432/mydatabase?sslmode=disable
+    depends_on:
+      - db # Önce veritabanı başlasın, sonra Go başlasın
+
+  # 3. Next.js Frontend Servisi (Opsiyonel)
+  frontend:
+    build:
+      context: ./frontend # Next.js projenin bulunduğu klasörün adı
+      dockerfile: Dockerfile
+    container_name: next_frontend
+    restart: always
+    ports:
+      - "3000:3000" # Next.js'in varsayılan portu
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080 # Frontend'in Backend'e istek atacağı adres
+    depends_on:
+      - backend # Önce backend başlasın, sonra frontend
+
+volumes:
+  pgdata:
+
+# docker-compose up --build ile tüm servisler başlar.
