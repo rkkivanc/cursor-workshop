@@ -273,6 +273,26 @@ export default function Home() {
           }),
         });
 
+        if (!response.ok) {
+          let errorMessage =
+            "Chat request failed. Please ensure a local AI model is connected.";
+          try {
+            const data = (await response.json()) as { error?: string };
+            if (data?.error) {
+              errorMessage = data.error;
+            }
+          } catch {
+            // ignore JSON parse errors and use fallback message
+          }
+
+          setChatError(errorMessage);
+          setIsStreaming(false);
+          setMessages((prev) =>
+            prev.filter((msg) => msg.id !== assistantMessage.id)
+          );
+          return;
+        }
+
         if (!response.body) {
           setChatError("No response body received from chat endpoint.");
           setIsStreaming(false);
