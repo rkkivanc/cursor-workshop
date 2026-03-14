@@ -1,0 +1,47 @@
+# settings.graphqls — Settings queries and mutations
+
+extend type Query {
+  """Return the authenticated user's settings."""
+  mySettings: UserSettingsPayload!
+
+  """Return all public application settings (no auth required)."""
+  appSettings: [AppSetting!]!
+}
+
+extend type Mutation {
+  """Create or update the authenticated user's settings."""
+  updateMySettings(input: UserSettingsInput!): UserSettingsPayload!
+}
+
+# ── Inputs ──────────────────────────────────────────────────────────────────
+
+input UserSettingsInput {
+  notificationsOn: Boolean
+  theme:           Theme
+  language:        String
+  timezone:        String
+}
+
+# ── Response types ───────────────────────────────────────────────────────────
+
+type UserSettingsPayload {
+  id:              UUID!
+  userID:          UUID!
+  notificationsOn: Boolean!
+  theme:           Theme!
+  language:        String!
+  timezone:        String!
+  updatedAt:       Time!
+}
+
+type AppSetting {
+  key:         String!
+  value:       String!
+  description: String!
+}
+
+enum Theme {
+  LIGHT
+  DARK
+  SYSTEM
+}

@@ -1,0 +1,47 @@
+# admin.graphqls — Admin-only queries and mutations (requires role: ADMIN)
+
+extend type Query {
+  """[Admin] Return a paginated list of all users."""
+  adminUsers(page: Int, pageSize: Int): AdminUserList!
+
+  """[Admin] Return a single user by ID."""
+  adminUser(id: UUID!): AdminUserProfile!
+}
+
+extend type Mutation {
+  """[Admin] Suspend or reactivate a user account."""
+  adminSuspendUser(id: UUID!, suspend: Boolean!): AdminUserProfile!
+
+  """[Admin] Change a user's role."""
+  adminChangeRole(id: UUID!, role: UserRole!): AdminUserProfile!
+}
+
+# ── Response types ───────────────────────────────────────────────────────────
+
+type AdminUserProfile {
+  id:             UUID!
+  email:          String!
+  displayName:    String!
+  avatarURL:      String!
+  bio:            String!
+  status:         UserStatus!
+  role:           UserRole!
+  createdAt:      Time!
+  updatedAt:      Time!
+  phoneNumber:    String!
+  dateOfBirth:    String
+  gender:         Gender!
+  location:       String!
+  websiteURL:     String!
+  socialTwitter:  String!
+  socialGitHub:   String!
+  socialLinkedIn: String!
+  language:       String!
+}
+
+type AdminUserList {
+  users:      [AdminUserProfile!]!
+  totalCount: Int!
+  page:       Int!
+  pageSize:   Int!
+}

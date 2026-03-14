@@ -1,0 +1,3077 @@
+{
+  "info": {
+    "_postman_id": "mf-collection-001",
+    "name": "MasterFabric Go Basic \u2014 GraphQL API v0.0.1",
+    "description": "360\u00b0 Postman collection for the MasterFabric Go Basic GraphQL API.\n\nCovers:\n- Health check\n- Auth: Register, Login, Refresh Tokens, Logout\n- User: Me (profile), Update Profile, Delete Account\n- Settings: My Settings, Update My Settings, App Settings\n- Edge-case / error-path requests\n\nAll token management is automatic via collection scripts.\nImport `masterfabric.environment.json` alongside this file.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "id": "col-pre-001",
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level pre-request script",
+          "// Runs before EVERY request in this collection.",
+          "",
+          "// Guarantee the graphql endpoint variable is always set.",
+          "const base = pm.environment.get('baseUrl') || 'http://localhost:8080';",
+          "const endpoint = pm.environment.get('graphqlEndpoint');",
+          "if (!endpoint) {",
+          "  pm.environment.set('graphqlEndpoint', base + '/graphql');",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "id": "col-test-001",
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level test script",
+          "// Runs after EVERY request in this collection.",
+          "",
+          "// Assert the server always returns a 200 HTTP status for GraphQL",
+          "// (GraphQL errors are surfaced in the JSON body, not via HTTP status).",
+          "if (pm.request.url.toString().includes('/graphql')) {",
+          "  pm.test('HTTP status is 200 for GraphQL endpoint', function () {",
+          "    pm.response.to.have.status(200);",
+          "  });",
+          "",
+          "  // Warn on unexpected GraphQL-level errors so they are visible in the",
+          "  // test runner even when a request is not specifically testing an error path.",
+          "  const body = pm.response.json();",
+          "  if (body.errors && body.errors.length > 0) {",
+          "    console.warn('[GraphQL errors]', JSON.stringify(body.errors));",
+          "  }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "colBaseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "\ud83c\udfe5 Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// No pre-request logic needed for health check."
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Content-Type is JSON', function () {",
+                  "  pm.response.to.have.header('Content-Type');",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "});",
+                  "",
+                  "pm.test('Response has status ok', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('status', 'ok');",
+                  "});",
+                  "",
+                  "pm.test('Response has version field', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('version');",
+                  "  pm.expect(body.version).to.be.a('string').and.not.be.empty;",
+                  "});",
+                  "",
+                  "pm.test('Response time is below 500ms', function () {",
+                  "  pm.expect(pm.response.responseTime).to.be.below(500);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Simple liveness probe. Returns `{\"status\":\"ok\",\"version\":\"...\"}`. No auth required."
+          }
+        },
+        {
+          "name": "Readiness Check",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// No pre-request logic needed for readiness check."
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Content-Type is JSON', function () {",
+                  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json');",
+                  "});",
+                  "",
+                  "pm.test('Overall status is ok', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('status', 'ok');",
+                  "});",
+                  "",
+                  "pm.test('Postgres check is ok', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.checks.postgres.status).to.eql('ok');",
+                  "});",
+                  "",
+                  "pm.test('Redis check is ok', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.checks.redis.status).to.eql('ok');",
+                  "});",
+                  "",
+                  "pm.test('Response time is below 1000ms', function () {",
+                  "  pm.expect(pm.response.responseTime).to.be.below(1000);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health/ready",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health",
+                "ready"
+              ]
+            },
+            "description": "Readiness probe. Pings Postgres and Redis. Returns 200 with all checks ok, or 503 if any dependency is down."
+          }
+        }
+      ]
+    },
+    {
+      "name": "\ud83d\udd10 Auth",
+      "item": [
+        {
+          "name": "Register",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Generate a unique email each run so re-running the collection",
+                  "// doesn't hit a 'email already exists' error.",
+                  "const ts = Date.now();",
+                  "const email = `test+${ts}@masterfabric.dev`;",
+                  "pm.environment.set('testEmail', email);",
+                  "pm.environment.set('testPassword', 'P@ssword1234');",
+                  "pm.environment.set('testDisplayName', 'Test User ' + ts);",
+                  "console.log('[Register pre-request] using email:', email);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('data.register exists', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data).to.have.property('register');",
+                  "});",
+                  "",
+                  "pm.test('register.accessToken is a non-empty string', function () {",
+                  "  const reg = pm.response.json().data.register;",
+                  "  pm.expect(reg.accessToken).to.be.a('string').and.not.be.empty;",
+                  "});",
+                  "",
+                  "pm.test('register.refreshToken is a non-empty string', function () {",
+                  "  const reg = pm.response.json().data.register;",
+                  "  pm.expect(reg.refreshToken).to.be.a('string').and.not.be.empty;",
+                  "});",
+                  "",
+                  "pm.test('register.expiresIn is a positive integer', function () {",
+                  "  const reg = pm.response.json().data.register;",
+                  "  pm.expect(reg.expiresIn).to.be.a('number').and.to.be.above(0);",
+                  "});",
+                  "",
+                  "pm.test('register.user.id is a valid UUID', function () {",
+                  "  const user = pm.response.json().data.register.user;",
+                  "  pm.expect(user.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);",
+                  "});",
+                  "",
+                  "pm.test('register.user.email matches what we sent', function () {",
+                  "  const user = pm.response.json().data.register.user;",
+                  "  pm.expect(user.email).to.equal(pm.environment.get('testEmail'));",
+                  "});",
+                  "",
+                  "pm.test('register.user.displayName is present', function () {",
+                  "  const user = pm.response.json().data.register.user;",
+                  "  pm.expect(user.displayName).to.be.a('string').and.not.be.empty;",
+                  "});",
+                  "",
+                  "// \u2500\u2500 Persist tokens for subsequent requests \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                  "const reg = pm.response.json().data.register;",
+                  "if (reg && reg.accessToken) {",
+                  "  pm.environment.set('accessToken', reg.accessToken);",
+                  "  pm.environment.set('refreshToken', reg.refreshToken);",
+                  "  pm.environment.set('userId', reg.user.id);",
+                  "  pm.environment.set('userEmail', reg.user.email);",
+                  "  pm.environment.set('userDisplayName', reg.user.displayName);",
+                  "  console.log('[Register] tokens saved. userId:', reg.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Register($input: RegisterInput!) {\n  register(input: $input) {\n    accessToken\n    refreshToken\n    expiresIn\n    user {\n      id\n      email\n      displayName\n      avatarURL\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"email\": \"{{testEmail}}\",\n    \"password\": \"{{testPassword}}\",\n    \"displayName\": \"{{testDisplayName}}\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Create a new user account. On success the access & refresh tokens plus user ID are automatically saved to the environment for all subsequent requests."
+          }
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Ensure credentials are present.",
+                  "const email = pm.environment.get('testEmail');",
+                  "const pass  = pm.environment.get('testPassword');",
+                  "if (!email || !pass) {",
+                  "  throw new Error('[Login pre-request] testEmail or testPassword is not set. Run Register first.');",
+                  "}",
+                  "console.log('[Login pre-request] logging in as:', email);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('data.login exists', function () {",
+                  "  pm.expect(pm.response.json().data).to.have.property('login');",
+                  "});",
+                  "",
+                  "pm.test('login.accessToken is a non-empty string', function () {",
+                  "  const login = pm.response.json().data.login;",
+                  "  pm.expect(login.accessToken).to.be.a('string').and.not.be.empty;",
+                  "});",
+                  "",
+                  "pm.test('login.refreshToken is a non-empty string', function () {",
+                  "  const login = pm.response.json().data.login;",
+                  "  pm.expect(login.refreshToken).to.be.a('string').and.not.be.empty;",
+                  "});",
+                  "",
+                  "pm.test('login.expiresIn is a positive integer', function () {",
+                  "  const login = pm.response.json().data.login;",
+                  "  pm.expect(login.expiresIn).to.be.a('number').and.to.be.above(0);",
+                  "});",
+                  "",
+                  "pm.test('login.user.id is a valid UUID', function () {",
+                  "  const user = pm.response.json().data.login.user;",
+                  "  pm.expect(user.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);",
+                  "});",
+                  "",
+                  "pm.test('login.user.email matches environment variable', function () {",
+                  "  const user = pm.response.json().data.login.user;",
+                  "  pm.expect(user.email).to.equal(pm.environment.get('testEmail'));",
+                  "});",
+                  "",
+                  "// \u2500\u2500 Overwrite tokens with freshly issued ones \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                  "const login = pm.response.json().data.login;",
+                  "if (login && login.accessToken) {",
+                  "  pm.environment.set('accessToken', login.accessToken);",
+                  "  pm.environment.set('refreshToken', login.refreshToken);",
+                  "  pm.environment.set('userId', login.user.id);",
+                  "  pm.environment.set('userEmail', login.user.email);",
+                  "  pm.environment.set('userDisplayName', login.user.displayName);",
+                  "  console.log('[Login] tokens refreshed. userId:', login.user.id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Login($input: LoginInput!) {\n  login(input: $input) {\n    accessToken\n    refreshToken\n    expiresIn\n    user {\n      id\n      email\n      displayName\n      avatarURL\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"email\": \"{{testEmail}}\",\n    \"password\": \"{{testPassword}}\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Authenticate with email + password. On success the environment `accessToken`, `refreshToken`, and `userId` are overwritten with the new values."
+          }
+        },
+        {
+          "name": "Login \u2014 Wrong Password (error path)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// This request intentionally uses a wrong password.",
+                  "// We temporarily override testPassword in the request body.",
+                  "console.log('[Login wrong-password pre-request] sending deliberately bad credentials.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is still 200 (GraphQL transport)', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response body contains errors array', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.errors).to.be.an('array').and.have.length.above(0);",
+                  "});",
+                  "",
+                  "pm.test('data.login is null on error', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data === null || (body.data && body.data.login === null)).to.be.true;",
+                  "});",
+                  "",
+                  "pm.test('Error message is present', function () {",
+                  "  const err = pm.response.json().errors[0];",
+                  "  pm.expect(err.message).to.be.a('string').and.not.be.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Login($input: LoginInput!) {\n  login(input: $input) {\n    accessToken\n    refreshToken\n    expiresIn\n    user {\n      id\n      email\n      displayName\n      avatarURL\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"email\": \"{{testEmail}}\",\n    \"password\": \"definitely-wrong-password\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Error-path test: login with a wrong password must return a GraphQL `errors` array and a null `data.login`."
+          }
+        },
+        {
+          "name": "Register \u2014 Duplicate Email (error path)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Re-uses the same email that was registered in the 'Register' request.",
+                  "const email = pm.environment.get('testEmail');",
+                  "if (!email) {",
+                  "  throw new Error('[Duplicate Register pre-request] testEmail is not set. Run Register first.');",
+                  "}",
+                  "console.log('[Duplicate Register pre-request] re-registering:', email);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response body contains errors array for duplicate email', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.errors).to.be.an('array').and.have.length.above(0);",
+                  "});",
+                  "",
+                  "pm.test('data.register is null on duplicate', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data === null || (body.data && body.data.register === null)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Register($input: RegisterInput!) {\n  register(input: $input) {\n    accessToken\n    refreshToken\n    expiresIn\n    user {\n      id\n      email\n      displayName\n      avatarURL\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"email\": \"{{testEmail}}\",\n    \"password\": \"{{testPassword}}\",\n    \"displayName\": \"Duplicate User\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Error-path test: registering the same email twice must return a GraphQL error."
+          }
+        },
+        {
+          "name": "Refresh Tokens",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const userId      = pm.environment.get('userId');",
+                  "const refreshToken = pm.environment.get('refreshToken');",
+                  "if (!userId || !refreshToken) {",
+                  "  throw new Error('[Refresh pre-request] userId or refreshToken is not set. Run Register or Login first.');",
+                  "}",
+                  "console.log('[Refresh pre-request] userId:', userId);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('data.refreshTokens exists', function () {",
+                  "  pm.expect(pm.response.json().data).to.have.property('refreshTokens');",
+                  "});",
+                  "",
+                  "pm.test('refreshTokens.accessToken is a non-empty string', function () {",
+                  "  const rt = pm.response.json().data.refreshTokens;",
+                  "  pm.expect(rt.accessToken).to.be.a('string').and.not.be.empty;",
+                  "});",
+                  "",
+                  "pm.test('refreshTokens.refreshToken is a non-empty string', function () {",
+                  "  const rt = pm.response.json().data.refreshTokens;",
+                  "  pm.expect(rt.refreshToken).to.be.a('string').and.not.be.empty;",
+                  "});",
+                  "",
+                  "pm.test('New accessToken differs from old one (token rotation)', function () {",
+                  "  const oldAccess = pm.environment.get('accessToken');",
+                  "  const newAccess = pm.response.json().data.refreshTokens.accessToken;",
+                  "  // Tokens may be identical only if issued within same second \u2014 acceptable.",
+                  "  pm.expect(newAccess).to.be.a('string').and.not.be.empty;",
+                  "  console.log('[Refresh] old vs new accessToken same?', oldAccess === newAccess);",
+                  "});",
+                  "",
+                  "// \u2500\u2500 Save rotated tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                  "const rt = pm.response.json().data.refreshTokens;",
+                  "if (rt && rt.accessToken) {",
+                  "  pm.environment.set('accessToken', rt.accessToken);",
+                  "  pm.environment.set('refreshToken', rt.refreshToken);",
+                  "  console.log('[Refresh] tokens rotated successfully.');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation RefreshTokens($input: RefreshInput!) {\n  refreshTokens(input: $input) {\n    accessToken\n    refreshToken\n    expiresIn\n    user {\n      id\n      email\n      displayName\n      avatarURL\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"userID\": \"{{userId}}\",\n    \"refreshToken\": \"{{refreshToken}}\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Exchange the stored `refreshToken` for a new token pair. On success the environment is updated with the new tokens (token rotation)."
+          }
+        },
+        {
+          "name": "Refresh Tokens \u2014 Invalid Token (error path)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const userId = pm.environment.get('userId');",
+                  "if (!userId) {",
+                  "  throw new Error('[Refresh invalid pre-request] userId is not set. Run Register first.');",
+                  "}",
+                  "console.log('[Refresh invalid pre-request] sending garbage refresh token.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response body contains errors array for bad refresh token', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.errors).to.be.an('array').and.have.length.above(0);",
+                  "});",
+                  "",
+                  "pm.test('data.refreshTokens is null on error', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data === null || (body.data && body.data.refreshTokens === null)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation RefreshTokens($input: RefreshInput!) {\n  refreshTokens(input: $input) {\n    accessToken\n    refreshToken\n    expiresIn\n    user {\n      id\n      email\n      displayName\n      avatarURL\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"userID\": \"{{userId}}\",\n    \"refreshToken\": \"this.is.not.a.valid.refresh.token\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Error-path test: a garbage refresh token must be rejected with a GraphQL error."
+          }
+        },
+        {
+          "name": "Logout",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const userId       = pm.environment.get('userId');",
+                  "const accessToken  = pm.environment.get('accessToken');",
+                  "const refreshToken = pm.environment.get('refreshToken');",
+                  "if (!userId || !accessToken || !refreshToken) {",
+                  "  throw new Error('[Logout pre-request] userId, accessToken, or refreshToken is not set. Run Login first.');",
+                  "}",
+                  "console.log('[Logout pre-request] logging out userId:', userId);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('data.logout is true', function () {",
+                  "  pm.expect(pm.response.json().data.logout).to.equal(true);",
+                  "});",
+                  "",
+                  "// \u2500\u2500 Clear tokens from environment after logout \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                  "pm.environment.unset('accessToken');",
+                  "pm.environment.unset('refreshToken');",
+                  "console.log('[Logout] tokens cleared from environment.');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Logout($input: LogoutInput!) {\n  logout(input: $input)\n}",
+                "variables": "{\n  \"input\": {\n    \"userID\": \"{{userId}}\",\n    \"accessToken\": \"{{accessToken}}\",\n    \"refreshToken\": \"{{refreshToken}}\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Revoke the current session. Blacklists the access token in Redis and deletes the refresh token. On success the environment tokens are cleared."
+          }
+        },
+        {
+          "name": "Login (re-authenticate after Logout)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Re-authenticate so subsequent requests (User, Settings) have a valid token.",
+                  "const email = pm.environment.get('testEmail');",
+                  "const pass  = pm.environment.get('testPassword');",
+                  "if (!email || !pass) {",
+                  "  throw new Error('[Re-Login pre-request] testEmail or testPassword is not set.');",
+                  "}",
+                  "console.log('[Re-Login pre-request] re-authenticating as:', email);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors on re-login', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('data.login exists on re-login', function () {",
+                  "  pm.expect(pm.response.json().data).to.have.property('login');",
+                  "});",
+                  "",
+                  "// \u2500\u2500 Restore tokens \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                  "const login = pm.response.json().data.login;",
+                  "if (login && login.accessToken) {",
+                  "  pm.environment.set('accessToken', login.accessToken);",
+                  "  pm.environment.set('refreshToken', login.refreshToken);",
+                  "  pm.environment.set('userId', login.user.id);",
+                  "  console.log('[Re-Login] tokens restored.');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation Login($input: LoginInput!) {\n  login(input: $input) {\n    accessToken\n    refreshToken\n    expiresIn\n    user {\n      id\n      email\n      displayName\n      avatarURL\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"email\": \"{{testEmail}}\",\n    \"password\": \"{{testPassword}}\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Re-authenticate after the Logout request clears the environment tokens, so that the User and Settings folders can run with a fresh session."
+          }
+        }
+      ]
+    },
+    {
+      "name": "\ud83d\udc64 User",
+      "item": [
+        {
+          "name": "Me (Get Profile)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token = pm.environment.get('accessToken');",
+                  "if (!token) {",
+                  "  throw new Error('[Me pre-request] accessToken is not set. Run Login first.');",
+                  "}",
+                  "console.log('[Me pre-request] fetching profile for userId:', pm.environment.get('userId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('data.me exists', function () {",
+                  "  pm.expect(pm.response.json().data).to.have.property('me');",
+                  "});",
+                  "",
+                  "pm.test('me.id matches environment userId', function () {",
+                  "  const me = pm.response.json().data.me;",
+                  "  pm.expect(me.id).to.equal(pm.environment.get('userId'));",
+                  "});",
+                  "",
+                  "pm.test('me.email matches environment userEmail', function () {",
+                  "  const me = pm.response.json().data.me;",
+                  "  pm.expect(me.email).to.equal(pm.environment.get('testEmail'));",
+                  "});",
+                  "",
+                  "pm.test('me.displayName is a non-empty string', function () {",
+                  "  const me = pm.response.json().data.me;",
+                  "  pm.expect(me.displayName).to.be.a('string').and.not.be.empty;",
+                  "});",
+                  "",
+                  "pm.test('me.status is one of ACTIVE, INACTIVE, SUSPENDED', function () {",
+                  "  const me = pm.response.json().data.me;",
+                  "  pm.expect(['ACTIVE', 'INACTIVE', 'SUSPENDED']).to.include(me.status);",
+                  "});",
+                  "",
+                  "pm.test('me.createdAt is an ISO-8601 timestamp', function () {",
+                  "  const me = pm.response.json().data.me;",
+                  "  pm.expect(new Date(me.createdAt).toString()).to.not.equal('Invalid Date');",
+                  "});",
+                  "",
+                  "pm.test('me.updatedAt is an ISO-8601 timestamp', function () {",
+                  "  const me = pm.response.json().data.me;",
+                  "  pm.expect(new Date(me.updatedAt).toString()).to.not.equal('Invalid Date');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Me {\n  me {\n    id\n    email\n    displayName\n    avatarURL\n    bio\n    status\n    createdAt\n    updatedAt\n    phoneNumber\n    dateOfBirth\n    gender\n    location\n    websiteURL\n    socialTwitter\n    socialGitHub\n    socialLinkedIn\n    language\n    address {\n      id\n      title\n      addressLine1\n      city\n      country\n      isDefault\n    }\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Fetch the authenticated user's full profile. Requires a valid Bearer token."
+          }
+        },
+        {
+          "name": "Me \u2014 Unauthenticated (error path)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Intentionally send no Authorization header.",
+                  "console.log('[Me unauthenticated pre-request] sending request without token.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('Response body contains errors array for missing auth', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.errors).to.be.an('array').and.have.length.above(0);",
+                  "});",
+                  "",
+                  "pm.test('data.me is null when unauthenticated', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data === null || (body.data && body.data.me === null)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Me {\n  me {\n    id\n    email\n    displayName\n    avatarURL\n    bio\n    status\n    createdAt\n    updatedAt\n    phoneNumber\n    dateOfBirth\n    gender\n    location\n    websiteURL\n    socialTwitter\n    socialGitHub\n    socialLinkedIn\n    language\n    address {\n      id\n      title\n      addressLine1\n      city\n      country\n      isDefault\n    }\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Error-path test: `me` query without Authorization header must return a GraphQL `errors` array."
+          }
+        },
+        {
+          "name": "Update Profile",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token = pm.environment.get('accessToken');",
+                  "if (!token) {",
+                  "  throw new Error('[UpdateProfile pre-request] accessToken is not set. Run Login first.');",
+                  "}",
+                  "// Set a unique display name so we can assert the change took effect.",
+                  "const newName = 'Updated Name ' + Date.now();",
+                  "pm.environment.set('updatedDisplayName', newName);",
+                  "console.log('[UpdateProfile pre-request] updating displayName to:', newName);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('data.updateProfile exists', function () {",
+                  "  pm.expect(pm.response.json().data).to.have.property('updateProfile');",
+                  "});",
+                  "",
+                  "pm.test('updateProfile.id matches environment userId', function () {",
+                  "  const up = pm.response.json().data.updateProfile;",
+                  "  pm.expect(up.id).to.equal(pm.environment.get('userId'));",
+                  "});",
+                  "",
+                  "pm.test('updateProfile.displayName reflects the update', function () {",
+                  "  const up = pm.response.json().data.updateProfile;",
+                  "  pm.expect(up.displayName).to.equal(pm.environment.get('updatedDisplayName'));",
+                  "});",
+                  "",
+                  "pm.test('updateProfile.bio is the newly set value', function () {",
+                  "  const up = pm.response.json().data.updateProfile;",
+                  "  pm.expect(up.bio).to.equal('Building awesome things with Go and GraphQL.');",
+                  "});",
+                  "",
+                  "pm.test('updateProfile.updatedAt is an ISO-8601 timestamp', function () {",
+                  "  const up = pm.response.json().data.updateProfile;",
+                  "  pm.expect(new Date(up.updatedAt).toString()).to.not.equal('Invalid Date');",
+                  "});",
+                  "",
+                  "pm.test('updateProfile.phoneNumber is set', function () {",
+                  "  const up = pm.response.json().data.updateProfile;",
+                  "  pm.expect(up.phoneNumber).to.equal('+1-555-0100');",
+                  "});",
+                  "",
+                  "pm.test('updateProfile.dateOfBirth is set', function () {",
+                  "  const up = pm.response.json().data.updateProfile;",
+                  "  pm.expect(up.dateOfBirth).to.equal('1990-06-15');",
+                  "});",
+                  "",
+                  "pm.test('updateProfile.gender is MALE', function () {",
+                  "  const up = pm.response.json().data.updateProfile;",
+                  "  pm.expect(up.gender).to.equal('MALE');",
+                  "});",
+                  "",
+                  "pm.test('updateProfile.location is set', function () {",
+                  "  const up = pm.response.json().data.updateProfile;",
+                  "  pm.expect(up.location).to.equal('Istanbul, Turkey');",
+                  "});",
+                  "",
+                  "pm.test('updateProfile.language is set', function () {",
+                  "  const up = pm.response.json().data.updateProfile;",
+                  "  pm.expect(up.language).to.equal('en');",
+                  "});",
+                  "",
+                  "// \u2500\u2500 Persist updated display name for later assertions \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                  "const up = pm.response.json().data.updateProfile;",
+                  "if (up && up.displayName) {",
+                  "  pm.environment.set('userDisplayName', up.displayName);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation UpdateProfile($input: UpdateProfileInput!) {\n  updateProfile(input: $input) {\n    id\n    email\n    displayName\n    avatarURL\n    bio\n    status\n    createdAt\n    updatedAt\n    phoneNumber\n    dateOfBirth\n    gender\n    location\n    websiteURL\n    socialTwitter\n    socialGitHub\n    socialLinkedIn\n    language\n    address {\n      id\n      title\n      addressLine1\n      city\n      country\n      isDefault\n    }\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"displayName\": \"{{updatedDisplayName}}\",\n    \"avatarURL\": \"https://example.com/avatar.png\",\n    \"bio\": \"Building awesome things with Go and GraphQL.\",\n    \"phoneNumber\": \"+1-555-0100\",\n    \"dateOfBirth\": \"1990-06-15\",\n    \"gender\": \"MALE\",\n    \"location\": \"Istanbul, Turkey\",\n    \"websiteURL\": \"https://example.com\",\n    \"socialTwitter\": \"@mytwitterhandle\",\n    \"socialGitHub\": \"mygithubhandle\",\n    \"socialLinkedIn\": \"mylinkedinhandle\",\n    \"language\": \"en\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Update the authenticated user's `displayName`, `avatarURL`, and `bio`. All fields are optional; only provided fields are changed."
+          }
+        },
+        {
+          "name": "Update Profile \u2014 Partial (only bio)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token = pm.environment.get('accessToken');",
+                  "if (!token) {",
+                  "  throw new Error('[UpdateProfile partial pre-request] accessToken is not set. Run Login first.');",
+                  "}",
+                  "console.log('[UpdateProfile partial pre-request] updating only bio.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors on partial update', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('data.updateProfile exists on partial update', function () {",
+                  "  pm.expect(pm.response.json().data).to.have.property('updateProfile');",
+                  "});",
+                  "",
+                  "pm.test('updateProfile.bio is updated', function () {",
+                  "  const up = pm.response.json().data.updateProfile;",
+                  "  pm.expect(up.bio).to.equal('Partial update \u2014 only bio changed.');",
+                  "});",
+                  "",
+                  "pm.test('updateProfile.displayName is still preserved', function () {",
+                  "  const up = pm.response.json().data.updateProfile;",
+                  "  // displayName was not passed so it should be unchanged",
+                  "  pm.expect(up.displayName).to.be.a('string').and.not.be.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation UpdateProfile($input: UpdateProfileInput!) {\n  updateProfile(input: $input) {\n    id\n    email\n    displayName\n    avatarURL\n    bio\n    status\n    createdAt\n    updatedAt\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"bio\": \"Partial update \u2014 only bio changed.\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Partial update \u2014 only `bio` is sent. `displayName` and `avatarURL` must remain unchanged."
+          }
+        },
+        {
+          "name": "Me \u2014 Verify Profile After Update",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token = pm.environment.get('accessToken');",
+                  "if (!token) {",
+                  "  throw new Error('[Me verify pre-request] accessToken is not set.');",
+                  "}",
+                  "console.log('[Me verify pre-request] verifying profile after update.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('me.bio is the partial-update value', function () {",
+                  "  const me = pm.response.json().data.me;",
+                  "  pm.expect(me.bio).to.equal('Partial update \u2014 only bio changed.');",
+                  "});",
+                  "",
+                  "pm.test('me.id is still the same userId', function () {",
+                  "  const me = pm.response.json().data.me;",
+                  "  pm.expect(me.id).to.equal(pm.environment.get('userId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Me {\n  me {\n    id\n    email\n    displayName\n    avatarURL\n    bio\n    status\n    createdAt\n    updatedAt\n    phoneNumber\n    dateOfBirth\n    gender\n    location\n    websiteURL\n    socialTwitter\n    socialGitHub\n    socialLinkedIn\n    language\n    address {\n      id\n      title\n      addressLine1\n      city\n      country\n      isDefault\n    }\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Verify that the profile changes from the previous update requests are reflected when fetching the profile again."
+          }
+        },
+        {
+          "name": "\ud83d\udccd Address",
+          "item": [
+            {
+              "name": "Upsert Address \u2014 Create (Home, default)",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const token = pm.environment.get('accessToken');",
+                      "if (!token) {",
+                      "  throw new Error('[UpsertAddress create pre-request] accessToken is not set. Run Login first.');",
+                      "}",
+                      "console.log('[UpsertAddress create pre-request] creating home address for userId:', pm.environment.get('userId'));"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('No GraphQL errors', function () {",
+                      "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                      "});",
+                      "",
+                      "pm.test('data.upsertAddress exists', function () {",
+                      "  pm.expect(pm.response.json().data).to.have.property('upsertAddress');",
+                      "});",
+                      "",
+                      "pm.test('upsertAddress.id is a valid UUID', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.id).to.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);",
+                      "});",
+                      "",
+                      "pm.test('upsertAddress.title is Home', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.title).to.equal('Home');",
+                      "});",
+                      "",
+                      "pm.test('upsertAddress.city is San Francisco', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.city).to.equal('San Francisco');",
+                      "});",
+                      "",
+                      "pm.test('upsertAddress.country is US', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.country).to.equal('US');",
+                      "});",
+                      "",
+                      "pm.test('upsertAddress.isDefault is true', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.isDefault).to.equal(true);",
+                      "});",
+                      "",
+                      "pm.test('upsertAddress.userID matches environment userId', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.userID).to.equal(pm.environment.get('userId'));",
+                      "});",
+                      "",
+                      "// \u2500\u2500 Persist addressId for subsequent requests \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                      "const addr = pm.response.json().data.upsertAddress;",
+                      "if (addr && addr.id) {",
+                      "  pm.environment.set('addressId', addr.id);",
+                      "  console.log('[UpsertAddress create] addressId saved:', addr.id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "graphql",
+                  "graphql": {
+                    "query": "mutation UpsertAddress($input: UpsertAddressInput!) {\n  upsertAddress(input: $input) {\n    id\n    userID\n    title\n    addressLine1\n    addressLine2\n    city\n    state\n    postalCode\n    country\n    isDefault\n    createdAt\n    updatedAt\n  }\n}",
+                    "variables": "{\n  \"input\": {\n    \"title\": \"Home\",\n    \"addressLine1\": \"123 Main Street\",\n    \"addressLine2\": \"Apt 4B\",\n    \"city\": \"San Francisco\",\n    \"state\": \"CA\",\n    \"postalCode\": \"94102\",\n    \"country\": \"US\",\n    \"isDefault\": true\n  }\n}"
+                  }
+                },
+                "url": {
+                  "raw": "{{graphqlEndpoint}}",
+                  "host": [ "{{graphqlEndpoint}}" ]
+                },
+                "description": "Create a new default home address. The returned `id` is saved to `addressId` environment variable for use in subsequent requests."
+              }
+            },
+            {
+              "name": "My Addresses",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const token = pm.environment.get('accessToken');",
+                      "if (!token) {",
+                      "  throw new Error('[MyAddresses pre-request] accessToken is not set. Run Login first.');",
+                      "}",
+                      "const addressId = pm.environment.get('addressId');",
+                      "if (!addressId) {",
+                      "  throw new Error('[MyAddresses pre-request] addressId is not set. Run Upsert Address \u2014 Create first.');",
+                      "}",
+                      "console.log('[MyAddresses pre-request] fetching addresses for userId:', pm.environment.get('userId'));"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('No GraphQL errors', function () {",
+                      "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                      "});",
+                      "",
+                      "pm.test('data.myAddresses is an array', function () {",
+                      "  pm.expect(pm.response.json().data.myAddresses).to.be.an('array');",
+                      "});",
+                      "",
+                      "pm.test('myAddresses contains at least one address', function () {",
+                      "  pm.expect(pm.response.json().data.myAddresses.length).to.be.above(0);",
+                      "});",
+                      "",
+                      "pm.test('myAddresses contains the created address', function () {",
+                      "  const addresses = pm.response.json().data.myAddresses;",
+                      "  const addressId = pm.environment.get('addressId');",
+                      "  const found = addresses.some(function (a) { return a.id === addressId; });",
+                      "  pm.expect(found).to.be.true;",
+                      "});",
+                      "",
+                      "pm.test('each address has required fields', function () {",
+                      "  const addresses = pm.response.json().data.myAddresses;",
+                      "  addresses.forEach(function (a) {",
+                      "    pm.expect(a).to.have.property('id').that.is.a('string');",
+                      "    pm.expect(a).to.have.property('userID').that.is.a('string');",
+                      "    pm.expect(a).to.have.property('title').that.is.a('string');",
+                      "    pm.expect(a).to.have.property('isDefault').that.is.a('boolean');",
+                      "  });",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "graphql",
+                  "graphql": {
+                    "query": "query MyAddresses {\n  myAddresses {\n    id\n    userID\n    title\n    addressLine1\n    addressLine2\n    city\n    state\n    postalCode\n    country\n    isDefault\n    createdAt\n    updatedAt\n  }\n}",
+                    "variables": "{}"
+                  }
+                },
+                "url": {
+                  "raw": "{{graphqlEndpoint}}",
+                  "host": [ "{{graphqlEndpoint}}" ]
+                },
+                "description": "Fetch all addresses belonging to the authenticated user."
+              }
+            },
+            {
+              "name": "Me \u2014 With Address",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const token = pm.environment.get('accessToken');",
+                      "if (!token) {",
+                      "  throw new Error('[Me with address pre-request] accessToken is not set. Run Login first.');",
+                      "}",
+                      "console.log('[Me with address pre-request] verifying default address is on profile.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('No GraphQL errors', function () {",
+                      "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                      "});",
+                      "",
+                      "pm.test('data.me exists', function () {",
+                      "  pm.expect(pm.response.json().data).to.have.property('me');",
+                      "});",
+                      "",
+                      "pm.test('me.address is not null (default address set)', function () {",
+                      "  const me = pm.response.json().data.me;",
+                      "  pm.expect(me.address).to.not.be.null;",
+                      "});",
+                      "",
+                      "pm.test('me.address.id matches the created addressId', function () {",
+                      "  const me = pm.response.json().data.me;",
+                      "  pm.expect(me.address.id).to.equal(pm.environment.get('addressId'));",
+                      "});",
+                      "",
+                      "pm.test('me.address.isDefault is true', function () {",
+                      "  const me = pm.response.json().data.me;",
+                      "  pm.expect(me.address.isDefault).to.equal(true);",
+                      "});",
+                      "",
+                      "pm.test('me.address.city is San Francisco', function () {",
+                      "  const me = pm.response.json().data.me;",
+                      "  pm.expect(me.address.city).to.equal('San Francisco');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "graphql",
+                  "graphql": {
+                    "query": "query Me {\n  me {\n    id\n    email\n    displayName\n    address {\n      id\n      title\n      addressLine1\n      city\n      state\n      postalCode\n      country\n      isDefault\n    }\n  }\n}",
+                    "variables": "{}"
+                  }
+                },
+                "url": {
+                  "raw": "{{graphqlEndpoint}}",
+                  "host": [ "{{graphqlEndpoint}}" ]
+                },
+                "description": "Fetch the `me` profile and verify that the nested `address` field is populated with the default address."
+              }
+            },
+            {
+              "name": "Upsert Address \u2014 Update (change city)",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const token = pm.environment.get('accessToken');",
+                      "if (!token) {",
+                      "  throw new Error('[UpsertAddress update pre-request] accessToken is not set. Run Login first.');",
+                      "}",
+                      "const addressId = pm.environment.get('addressId');",
+                      "if (!addressId) {",
+                      "  throw new Error('[UpsertAddress update pre-request] addressId is not set. Run Upsert Address \u2014 Create first.');",
+                      "}",
+                      "console.log('[UpsertAddress update pre-request] updating addressId:', addressId);"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('No GraphQL errors', function () {",
+                      "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                      "});",
+                      "",
+                      "pm.test('data.upsertAddress exists', function () {",
+                      "  pm.expect(pm.response.json().data).to.have.property('upsertAddress');",
+                      "});",
+                      "",
+                      "pm.test('upsertAddress.id is unchanged', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.id).to.equal(pm.environment.get('addressId'));",
+                      "});",
+                      "",
+                      "pm.test('upsertAddress.city is updated to New York', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.city).to.equal('New York');",
+                      "});",
+                      "",
+                      "pm.test('upsertAddress.postalCode is updated', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.postalCode).to.equal('10001');",
+                      "});",
+                      "",
+                      "pm.test('upsertAddress.isDefault remains true', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.isDefault).to.equal(true);",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "graphql",
+                  "graphql": {
+                    "query": "mutation UpsertAddress($input: UpsertAddressInput!) {\n  upsertAddress(input: $input) {\n    id\n    userID\n    title\n    addressLine1\n    city\n    state\n    postalCode\n    country\n    isDefault\n    updatedAt\n  }\n}",
+                    "variables": "{\n  \"input\": {\n    \"addressID\": \"{{addressId}}\",\n    \"title\": \"Home\",\n    \"addressLine1\": \"456 Broadway\",\n    \"city\": \"New York\",\n    \"state\": \"NY\",\n    \"postalCode\": \"10001\",\n    \"country\": \"US\",\n    \"isDefault\": true\n  }\n}"
+                  }
+                },
+                "url": {
+                  "raw": "{{graphqlEndpoint}}",
+                  "host": [ "{{graphqlEndpoint}}" ]
+                },
+                "description": "Update the existing address (identified by `addressID`) to change the city from San Francisco to New York."
+              }
+            },
+            {
+              "name": "Upsert Address \u2014 Create Second (Work, non-default)",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const token = pm.environment.get('accessToken');",
+                      "if (!token) {",
+                      "  throw new Error('[UpsertAddress second pre-request] accessToken is not set. Run Login first.');",
+                      "}",
+                      "console.log('[UpsertAddress second pre-request] creating a second (work) address.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('No GraphQL errors', function () {",
+                      "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                      "});",
+                      "",
+                      "pm.test('data.upsertAddress exists', function () {",
+                      "  pm.expect(pm.response.json().data).to.have.property('upsertAddress');",
+                      "});",
+                      "",
+                      "pm.test('second address has a different id from the first', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.id).to.not.equal(pm.environment.get('addressId'));",
+                      "});",
+                      "",
+                      "pm.test('second address title is Work', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.title).to.equal('Work');",
+                      "});",
+                      "",
+                      "pm.test('second address isDefault is false', function () {",
+                      "  const addr = pm.response.json().data.upsertAddress;",
+                      "  pm.expect(addr.isDefault).to.equal(false);",
+                      "});",
+                      "",
+                      "// \u2500\u2500 Save second address id for cleanup reference \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                      "const addr = pm.response.json().data.upsertAddress;",
+                      "if (addr && addr.id) {",
+                      "  pm.environment.set('addressId2', addr.id);",
+                      "  console.log('[UpsertAddress second] addressId2 saved:', addr.id);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "graphql",
+                  "graphql": {
+                    "query": "mutation UpsertAddress($input: UpsertAddressInput!) {\n  upsertAddress(input: $input) {\n    id\n    userID\n    title\n    addressLine1\n    city\n    state\n    postalCode\n    country\n    isDefault\n    createdAt\n    updatedAt\n  }\n}",
+                    "variables": "{\n  \"input\": {\n    \"title\": \"Work\",\n    \"addressLine1\": \"1 Infinite Loop\",\n    \"city\": \"Cupertino\",\n    \"state\": \"CA\",\n    \"postalCode\": \"95014\",\n    \"country\": \"US\",\n    \"isDefault\": false\n  }\n}"
+                  }
+                },
+                "url": {
+                  "raw": "{{graphqlEndpoint}}",
+                  "host": [ "{{graphqlEndpoint}}" ]
+                },
+                "description": "Create a second non-default work address. Verifies that multiple addresses can be stored per user."
+              }
+            },
+            {
+              "name": "My Addresses \u2014 After Second (verify two addresses)",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const token = pm.environment.get('accessToken');",
+                      "if (!token) {",
+                      "  throw new Error('[MyAddresses after second pre-request] accessToken is not set. Run Login first.');",
+                      "}",
+                      "console.log('[MyAddresses after second pre-request] verifying two addresses exist.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('No GraphQL errors', function () {",
+                      "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                      "});",
+                      "",
+                      "pm.test('myAddresses has exactly two addresses', function () {",
+                      "  pm.expect(pm.response.json().data.myAddresses.length).to.equal(2);",
+                      "});",
+                      "",
+                      "pm.test('exactly one address is default', function () {",
+                      "  const addresses = pm.response.json().data.myAddresses;",
+                      "  const defaultAddresses = addresses.filter(function (a) { return a.isDefault; });",
+                      "  pm.expect(defaultAddresses.length).to.equal(1);",
+                      "});",
+                      "",
+                      "pm.test('the default address is the first one (Home)', function () {",
+                      "  const addresses = pm.response.json().data.myAddresses;",
+                      "  const defaultAddr = addresses.find(function (a) { return a.isDefault; });",
+                      "  pm.expect(defaultAddr.id).to.equal(pm.environment.get('addressId'));",
+                      "  pm.expect(defaultAddr.title).to.equal('Home');",
+                      "});",
+                      "",
+                      "pm.test('the non-default address is Work', function () {",
+                      "  const addresses = pm.response.json().data.myAddresses;",
+                      "  const workAddr = addresses.find(function (a) { return !a.isDefault; });",
+                      "  pm.expect(workAddr.title).to.equal('Work');",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "graphql",
+                  "graphql": {
+                    "query": "query MyAddresses {\n  myAddresses {\n    id\n    userID\n    title\n    addressLine1\n    city\n    state\n    postalCode\n    country\n    isDefault\n    createdAt\n    updatedAt\n  }\n}",
+                    "variables": "{}"
+                  }
+                },
+                "url": {
+                  "raw": "{{graphqlEndpoint}}",
+                  "host": [ "{{graphqlEndpoint}}" ]
+                },
+                "description": "After creating two addresses, verify both exist and exactly one is marked as default."
+              }
+            },
+            {
+              "name": "Addresses By User ID",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const token = pm.environment.get('accessToken');",
+                      "if (!token) {",
+                      "  throw new Error('[AddressesByUserID pre-request] accessToken is not set. Run Login first.');",
+                      "}",
+                      "const userId = pm.environment.get('userId');",
+                      "if (!userId) {",
+                      "  throw new Error('[AddressesByUserID pre-request] userId is not set. Run Login first.');",
+                      "}",
+                      "console.log('[AddressesByUserID pre-request] querying addresses for userId:', userId);"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('No GraphQL errors', function () {",
+                      "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                      "});",
+                      "",
+                      "pm.test('data.addressesByUserID is an array', function () {",
+                      "  pm.expect(pm.response.json().data.addressesByUserID).to.be.an('array');",
+                      "});",
+                      "",
+                      "pm.test('addressesByUserID returns the same count as myAddresses (2)', function () {",
+                      "  pm.expect(pm.response.json().data.addressesByUserID.length).to.equal(2);",
+                      "});",
+                      "",
+                      "pm.test('addressesByUserID contains the created addressId', function () {",
+                      "  const addresses = pm.response.json().data.addressesByUserID;",
+                      "  const addressId = pm.environment.get('addressId');",
+                      "  const found = addresses.some(function (a) { return a.id === addressId; });",
+                      "  pm.expect(found).to.be.true;",
+                      "});",
+                      "",
+                      "pm.test('all returned addresses belong to the queried user', function () {",
+                      "  const addresses = pm.response.json().data.addressesByUserID;",
+                      "  const userId = pm.environment.get('userId');",
+                      "  addresses.forEach(function (a) {",
+                      "    pm.expect(a.userID).to.equal(userId);",
+                      "  });",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" },
+                  { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+                ],
+                "body": {
+                  "mode": "graphql",
+                  "graphql": {
+                    "query": "query AddressesByUserID($userID: UUID!) {\n  addressesByUserID(userID: $userID) {\n    id\n    userID\n    title\n    addressLine1\n    city\n    state\n    postalCode\n    country\n    isDefault\n    createdAt\n    updatedAt\n  }\n}",
+                    "variables": "{\n  \"userID\": \"{{userId}}\"\n}"
+                  }
+                },
+                "url": {
+                  "raw": "{{graphqlEndpoint}}",
+                  "host": [ "{{graphqlEndpoint}}" ]
+                },
+                "description": "Admin / lookup query: fetch all addresses for a given user ID. Results should match `myAddresses`."
+              }
+            },
+            {
+              "name": "Upsert Address \u2014 Unauthenticated (error path)",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Intentionally send no Authorization header.",
+                      "console.log('[UpsertAddress unauth pre-request] sending request without token.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP status is 200 (GraphQL transport)', function () {",
+                      "  pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test('Response body contains errors array for missing auth', function () {",
+                      "  const body = pm.response.json();",
+                      "  pm.expect(body.errors).to.be.an('array').and.have.length.above(0);",
+                      "});",
+                      "",
+                      "pm.test('data.upsertAddress is null when unauthenticated', function () {",
+                      "  const body = pm.response.json();",
+                      "  pm.expect(body.data === null || (body.data && body.data.upsertAddress === null)).to.be.true;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "graphql",
+                  "graphql": {
+                    "query": "mutation UpsertAddress($input: UpsertAddressInput!) {\n  upsertAddress(input: $input) {\n    id\n    title\n    city\n    country\n    isDefault\n  }\n}",
+                    "variables": "{\n  \"input\": {\n    \"title\": \"Unauthorized\",\n    \"addressLine1\": \"1 No Access Ave\",\n    \"city\": \"Nowhere\",\n    \"country\": \"US\",\n    \"isDefault\": false\n  }\n}"
+                  }
+                },
+                "url": {
+                  "raw": "{{graphqlEndpoint}}",
+                  "host": [ "{{graphqlEndpoint}}" ]
+                },
+                "description": "Error-path test: `upsertAddress` without an Authorization header must return a GraphQL `errors` array."
+              }
+            },
+            {
+              "name": "My Addresses \u2014 Unauthenticated (error path)",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "// Intentionally send no Authorization header.",
+                      "console.log('[MyAddresses unauth pre-request] sending request without token.');"
+                    ]
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP status is 200 (GraphQL transport)', function () {",
+                      "  pm.response.to.have.status(200);",
+                      "});",
+                      "",
+                      "pm.test('Response body contains errors array for missing auth', function () {",
+                      "  const body = pm.response.json();",
+                      "  pm.expect(body.errors).to.be.an('array').and.have.length.above(0);",
+                      "});",
+                      "",
+                      "pm.test('data.myAddresses is null when unauthenticated', function () {",
+                      "  const body = pm.response.json();",
+                      "  pm.expect(body.data === null || (body.data && body.data.myAddresses === null)).to.be.true;",
+                      "});"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "graphql",
+                  "graphql": {
+                    "query": "query MyAddresses {\n  myAddresses {\n    id\n    title\n    city\n    country\n    isDefault\n  }\n}",
+                    "variables": "{}"
+                  }
+                },
+                "url": {
+                  "raw": "{{graphqlEndpoint}}",
+                  "host": [ "{{graphqlEndpoint}}" ]
+                },
+                "description": "Error-path test: `myAddresses` without an Authorization header must return a GraphQL `errors` array."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "\u2699\ufe0f Settings",
+      "item": [
+        {
+          "name": "App Settings (public)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// appSettings requires no authentication.",
+                  "console.log('[AppSettings pre-request] fetching public app settings (no auth required).');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('data.appSettings is an array', function () {",
+                  "  pm.expect(pm.response.json().data.appSettings).to.be.an('array');",
+                  "});",
+                  "",
+                  "pm.test('Each app setting has key, value, description', function () {",
+                  "  const settings = pm.response.json().data.appSettings;",
+                  "  settings.forEach(function (s) {",
+                  "    pm.expect(s).to.have.property('key').that.is.a('string');",
+                  "    pm.expect(s).to.have.property('value').that.is.a('string');",
+                  "    pm.expect(s).to.have.property('description').that.is.a('string');",
+                  "  });",
+                  "});",
+                  "",
+                  "pm.test('App settings count is >= 0', function () {",
+                  "  pm.expect(pm.response.json().data.appSettings.length).to.be.at.least(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query AppSettings {\n  appSettings {\n    key\n    value\n    description\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Fetch all public application settings. No authentication required."
+          }
+        },
+        {
+          "name": "My Settings",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token = pm.environment.get('accessToken');",
+                  "if (!token) {",
+                  "  throw new Error('[MySettings pre-request] accessToken is not set. Run Login first.');",
+                  "}",
+                  "console.log('[MySettings pre-request] fetching settings for userId:', pm.environment.get('userId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('data.mySettings exists', function () {",
+                  "  pm.expect(pm.response.json().data).to.have.property('mySettings');",
+                  "});",
+                  "",
+                  "pm.test('mySettings.userID matches environment userId', function () {",
+                  "  const s = pm.response.json().data.mySettings;",
+                  "  pm.expect(s.userID).to.equal(pm.environment.get('userId'));",
+                  "});",
+                  "",
+                  "pm.test('mySettings.theme is one of LIGHT, DARK, SYSTEM', function () {",
+                  "  const s = pm.response.json().data.mySettings;",
+                  "  pm.expect(['LIGHT', 'DARK', 'SYSTEM']).to.include(s.theme);",
+                  "});",
+                  "",
+                  "pm.test('mySettings.notificationsOn is a boolean', function () {",
+                  "  const s = pm.response.json().data.mySettings;",
+                  "  pm.expect(s.notificationsOn).to.be.a('boolean');",
+                  "});",
+                  "",
+                  "pm.test('mySettings.language is a non-empty string', function () {",
+                  "  const s = pm.response.json().data.mySettings;",
+                  "  pm.expect(s.language).to.be.a('string').and.not.be.empty;",
+                  "});",
+                  "",
+                  "pm.test('mySettings.timezone is a non-empty string', function () {",
+                  "  const s = pm.response.json().data.mySettings;",
+                  "  pm.expect(s.timezone).to.be.a('string').and.not.be.empty;",
+                  "});",
+                  "",
+                  "pm.test('mySettings.updatedAt is an ISO-8601 timestamp', function () {",
+                  "  const s = pm.response.json().data.mySettings;",
+                  "  pm.expect(new Date(s.updatedAt).toString()).to.not.equal('Invalid Date');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query MySettings {\n  mySettings {\n    id\n    userID\n    notificationsOn\n    theme\n    language\n    timezone\n    updatedAt\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Fetch the authenticated user's personal settings (theme, language, timezone, notifications). Requires Bearer token."
+          }
+        },
+        {
+          "name": "My Settings \u2014 Unauthenticated (error path)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Intentionally no Authorization header.",
+                  "console.log('[MySettings unauth pre-request] sending without token.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errors array present when unauthenticated', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.errors).to.be.an('array').and.have.length.above(0);",
+                  "});",
+                  "",
+                  "pm.test('data.mySettings is null when unauthenticated', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data === null || (body.data && body.data.mySettings === null)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query MySettings {\n  mySettings {\n    id\n    userID\n    notificationsOn\n    theme\n    language\n    timezone\n    updatedAt\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Error-path test: `mySettings` without an auth token must return a GraphQL error."
+          }
+        },
+        {
+          "name": "Update My Settings",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token = pm.environment.get('accessToken');",
+                  "if (!token) {",
+                  "  throw new Error('[UpdateMySettings pre-request] accessToken is not set. Run Login first.');",
+                  "}",
+                  "console.log('[UpdateMySettings pre-request] updating settings for userId:', pm.environment.get('userId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('data.updateMySettings exists', function () {",
+                  "  pm.expect(pm.response.json().data).to.have.property('updateMySettings');",
+                  "});",
+                  "",
+                  "pm.test('updateMySettings.theme is DARK', function () {",
+                  "  const s = pm.response.json().data.updateMySettings;",
+                  "  pm.expect(s.theme).to.equal('DARK');",
+                  "});",
+                  "",
+                  "pm.test('updateMySettings.notificationsOn is false', function () {",
+                  "  const s = pm.response.json().data.updateMySettings;",
+                  "  pm.expect(s.notificationsOn).to.equal(false);",
+                  "});",
+                  "",
+                  "pm.test('updateMySettings.language is tr', function () {",
+                  "  const s = pm.response.json().data.updateMySettings;",
+                  "  pm.expect(s.language).to.equal('tr');",
+                  "});",
+                  "",
+                  "pm.test('updateMySettings.timezone is Europe/Istanbul', function () {",
+                  "  const s = pm.response.json().data.updateMySettings;",
+                  "  pm.expect(s.timezone).to.equal('Europe/Istanbul');",
+                  "});",
+                  "",
+                  "pm.test('updateMySettings.userID matches environment userId', function () {",
+                  "  const s = pm.response.json().data.updateMySettings;",
+                  "  pm.expect(s.userID).to.equal(pm.environment.get('userId'));",
+                  "});",
+                  "",
+                  "pm.test('updateMySettings.updatedAt is an ISO-8601 timestamp', function () {",
+                  "  const s = pm.response.json().data.updateMySettings;",
+                  "  pm.expect(new Date(s.updatedAt).toString()).to.not.equal('Invalid Date');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation UpdateMySettings($input: UserSettingsInput!) {\n  updateMySettings(input: $input) {\n    id\n    userID\n    notificationsOn\n    theme\n    language\n    timezone\n    updatedAt\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"notificationsOn\": false,\n    \"theme\": \"DARK\",\n    \"language\": \"tr\",\n    \"timezone\": \"Europe/Istanbul\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Upsert the authenticated user's settings. All fields optional. Sends theme=DARK, notificationsOn=false, language=tr, timezone=Europe/Istanbul."
+          }
+        },
+        {
+          "name": "Update My Settings \u2014 Light Theme",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token = pm.environment.get('accessToken');",
+                  "if (!token) {",
+                  "  throw new Error('[UpdateMySettings light pre-request] accessToken is not set.');",
+                  "}",
+                  "console.log('[UpdateMySettings light pre-request] switching theme to LIGHT.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors on theme switch', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('updateMySettings.theme is LIGHT', function () {",
+                  "  const s = pm.response.json().data.updateMySettings;",
+                  "  pm.expect(s.theme).to.equal('LIGHT');",
+                  "});",
+                  "",
+                  "pm.test('updateMySettings.notificationsOn is true', function () {",
+                  "  const s = pm.response.json().data.updateMySettings;",
+                  "  pm.expect(s.notificationsOn).to.equal(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation UpdateMySettings($input: UserSettingsInput!) {\n  updateMySettings(input: $input) {\n    id\n    userID\n    notificationsOn\n    theme\n    language\n    timezone\n    updatedAt\n  }\n}",
+                "variables": "{\n  \"input\": {\n    \"notificationsOn\": true,\n    \"theme\": \"LIGHT\",\n    \"language\": \"en\",\n    \"timezone\": \"UTC\"\n  }\n}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Switch theme back to LIGHT and re-enable notifications. Verifies the upsert logic works in both directions."
+          }
+        },
+        {
+          "name": "My Settings \u2014 Verify After Update",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token = pm.environment.get('accessToken');",
+                  "if (!token) {",
+                  "  throw new Error('[MySettings verify pre-request] accessToken is not set.');",
+                  "}",
+                  "console.log('[MySettings verify pre-request] verifying settings after update.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors on verify', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('mySettings.theme is LIGHT after last update', function () {",
+                  "  const s = pm.response.json().data.mySettings;",
+                  "  pm.expect(s.theme).to.equal('LIGHT');",
+                  "});",
+                  "",
+                  "pm.test('mySettings.language is en after last update', function () {",
+                  "  const s = pm.response.json().data.mySettings;",
+                  "  pm.expect(s.language).to.equal('en');",
+                  "});",
+                  "",
+                  "pm.test('mySettings.timezone is UTC after last update', function () {",
+                  "  const s = pm.response.json().data.mySettings;",
+                  "  pm.expect(s.timezone).to.equal('UTC');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query MySettings {\n  mySettings {\n    id\n    userID\n    notificationsOn\n    theme\n    language\n    timezone\n    updatedAt\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Re-fetch settings to confirm the last update (LIGHT, en, UTC) persisted correctly."
+          }
+        }
+      ]
+    },
+    {
+      "name": "\ud83d\udc51 Admin",
+      "id": "7891cecf-7d99-4e72-bcb8-9d63d3e9c4e4",
+      "item": [
+        {
+          "name": "Admin \u2013 List Users",
+          "id": "de67577e-a378-4df5-93d0-333429f34a5e",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query AdminListUsers($page: Int, $pageSize: Int) {\\n  adminUsers(page: $page, pageSize: $pageSize) {\\n    users {\\n      id\\n      email\\n      displayName\\n      role\\n      status\\n      createdAt\\n    }\\n    totalCount\\n    page\\n    pageSize\\n  }\\n}\",\n  \"variables\": {\n    \"page\": 1,\n    \"pageSize\": 10\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ],
+              "path": []
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get(\"accessToken\")) {",
+                  "  throw new Error(\"accessToken not set \u2013 run Login first\");",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Has data.adminUsers\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.nested.property(\"data.adminUsers.users\");",
+                  "  pm.expect(b.data.adminUsers.users).to.be.an(\"array\");",
+                  "  pm.expect(b.data.adminUsers.totalCount).to.be.a(\"number\");",
+                  "  // save first user id for subsequent requests",
+                  "  if (b.data.adminUsers.users.length > 0) {",
+                  "    pm.collectionVariables.set(\"adminTargetUserId\", b.data.adminUsers.users[0].id);",
+                  "  }",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin \u2013 Get User By ID",
+          "id": "b766985d-aa6e-43f1-b2d0-1dbf9cedac80",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query AdminGetUser($id: UUID!) {\\n  adminUser(id: $id) {\\n    id\\n    email\\n    displayName\\n    role\\n    status\\n    createdAt\\n    updatedAt\\n  }\\n}\",\n  \"variables\": {\n    \"id\": \"{{adminTargetUserId}}\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ],
+              "path": []
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get(\"adminTargetUserId\")) {",
+                  "  throw new Error(\"adminTargetUserId not set \u2013 run Admin List Users first\");",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Has data.adminUser\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.nested.property(\"data.adminUser.id\");",
+                  "  pm.expect(b.data.adminUser.role).to.be.oneOf([\"ADMIN\",\"MODERATOR\",\"USER\"]);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin \u2013 Change Role to MODERATOR",
+          "id": "5c57533f-9e93-4fa0-8705-760f5f98cdd7",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation AdminChangeRole($id: UUID!, $role: UserRole!) {\\n  adminChangeRole(id: $id, role: $role) {\\n    id\\n    email\\n    role\\n    updatedAt\\n  }\\n}\",\n  \"variables\": {\n    \"id\": \"{{adminTargetUserId}}\",\n    \"role\": \"MODERATOR\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ],
+              "path": []
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get(\"adminTargetUserId\")) {",
+                  "  throw new Error(\"adminTargetUserId not set \u2013 run Admin List Users first\");",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Role updated\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.nested.property(\"data.adminChangeRole.role\");",
+                  "  pm.expect(b.data.adminChangeRole.role).to.equal(\"MODERATOR\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin \u2013 Suspend User",
+          "id": "13b102e4-3184-4ad9-981b-ff66d492a0e1",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation AdminSuspendUser($id: UUID!, $suspend: Boolean!) {\\n  adminSuspendUser(id: $id, suspend: $suspend) {\\n    id\\n    email\\n    status\\n    updatedAt\\n  }\\n}\",\n  \"variables\": {\n    \"id\": \"{{adminTargetUserId}}\",\n    \"suspend\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ],
+              "path": []
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get(\"adminTargetUserId\")) {",
+                  "  throw new Error(\"adminTargetUserId not set \u2013 run Admin List Users first\");",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Status is suspended\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b).to.have.nested.property(\"data.adminSuspendUser.status\");",
+                  "  pm.expect(b.data.adminSuspendUser.status).to.equal(\"SUSPENDED\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin \u2013 Reactivate User",
+          "id": "cb42c29d-3904-4291-b368-cb79ffd63b7d",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation AdminSuspendUser($id: UUID!, $suspend: Boolean!) {\\n  adminSuspendUser(id: $id, suspend: $suspend) {\\n    id\\n    email\\n    status\\n    updatedAt\\n  }\\n}\",\n  \"variables\": {\n    \"id\": \"{{adminTargetUserId}}\",\n    \"suspend\": false\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ],
+              "path": []
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get(\"adminTargetUserId\")) {",
+                  "  throw new Error(\"adminTargetUserId not set \u2013 run Admin List Users first\");",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Status is active\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.data.adminSuspendUser.status).to.equal(\"ACTIVE\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin \u2013 Change Role to ADMIN",
+          "id": "a1b2c3d4-0001-4000-8000-000000000001",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation AdminChangeRole($id: UUID!, $role: UserRole!) {\\n  adminChangeRole(id: $id, role: $role) {\\n    id\\n    email\\n    role\\n    updatedAt\\n  }\\n}\",\n  \"variables\": {\n    \"id\": \"{{adminTargetUserId}}\",\n    \"role\": \"ADMIN\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [ "{{graphqlEndpoint}}" ],
+              "path": []
+            },
+            "description": "Promote the target user to ADMIN role."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('adminTargetUserId')) {",
+                  "  throw new Error('adminTargetUserId not set \u2013 run Admin List Users first');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Role is ADMIN', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.errors).to.be.undefined;",
+                  "  pm.expect(b.data.adminChangeRole.role).to.equal('ADMIN');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin \u2013 Change Role back to USER",
+          "id": "a1b2c3d4-0002-4000-8000-000000000002",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation AdminChangeRole($id: UUID!, $role: UserRole!) {\\n  adminChangeRole(id: $id, role: $role) {\\n    id\\n    email\\n    role\\n    updatedAt\\n  }\\n}\",\n  \"variables\": {\n    \"id\": \"{{adminTargetUserId}}\",\n    \"role\": \"USER\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [ "{{graphqlEndpoint}}" ],
+              "path": []
+            },
+            "description": "Revert the target user back to USER role (cleanup after role promotion tests)."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get('adminTargetUserId')) {",
+                  "  throw new Error('adminTargetUserId not set \u2013 run Admin List Users first');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Role reverted to USER', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.errors).to.be.undefined;",
+                  "  pm.expect(b.data.adminChangeRole.role).to.equal('USER');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin \u2013 Get User By ID \u2014 Not Found (error path)",
+          "id": "a1b2c3d4-0003-4000-8000-000000000003",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query AdminGetUser($id: UUID!) {\\n  adminUser(id: $id) {\\n    id\\n    email\\n  }\\n}\",\n  \"variables\": {\n    \"id\": \"00000000-0000-0000-0000-000000000000\"\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [ "{{graphqlEndpoint}}" ],
+              "path": []
+            },
+            "description": "Fetching a non-existent UUID must return a NOT_FOUND error."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns NOT_FOUND error', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.errors).to.be.an('array').with.length.above(0);",
+                  "  const msg = b.errors[0].message;",
+                  "  pm.expect(msg).to.match(/NOT_FOUND|not found/i);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin \u2013 Suspend Already Suspended (idempotency)",
+          "id": "a1b2c3d4-0004-4000-8000-000000000004",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"mutation AdminSuspendUser($id: UUID!, $suspend: Boolean!) {\\n  adminSuspendUser(id: $id, suspend: $suspend) {\\n    id\\n    email\\n    status\\n  }\\n}\",\n  \"variables\": {\n    \"id\": \"{{adminTargetUserId}}\",\n    \"suspend\": true\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [ "{{graphqlEndpoint}}" ],
+              "path": []
+            },
+            "description": "Suspending an already-suspended user must be idempotent — still returns SUSPENDED with no error."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// First suspend the user so the target is already suspended",
+                  "// before we call suspend again in the test assertion.",
+                  "if (!pm.collectionVariables.get('adminTargetUserId')) {",
+                  "  throw new Error('adminTargetUserId not set \u2013 run Admin List Users first');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Idempotent \u2014 status is still SUSPENDED', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.errors).to.be.undefined;",
+                  "  pm.expect(b.data.adminSuspendUser.status).to.equal('SUSPENDED');",
+                  "});",
+                  "// Reactivate so subsequent tests are not broken",
+                  "// (actual reactivation is done by Admin \u2013 Reactivate User)"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin \u2013 List Users Page 2 (pagination)",
+          "id": "a1b2c3d4-0005-4000-8000-000000000005",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query AdminListUsers($page: Int, $pageSize: Int) {\\n  adminUsers(page: $page, pageSize: $pageSize) {\\n    users {\\n      id\\n      email\\n      role\\n      status\\n    }\\n    totalCount\\n    page\\n    pageSize\\n  }\\n}\",\n  \"variables\": {\n    \"page\": 2,\n    \"pageSize\": 1\n  }\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [ "{{graphqlEndpoint}}" ],
+              "path": []
+            },
+            "description": "Request page 2 with pageSize 1 to verify pagination metadata is correct."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Pagination metadata correct', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.errors).to.be.undefined;",
+                  "  const list = b.data.adminUsers;",
+                  "  pm.expect(list.page).to.equal(2);",
+                  "  pm.expect(list.pageSize).to.equal(1);",
+                  "  pm.expect(list.users.length).to.be.at.most(1);",
+                  "  pm.expect(list.totalCount).to.be.a('number').and.above(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin \u2013 Forbidden (regular user token)",
+          "id": "a1b2c3d4-0006-4000-8000-000000000006",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{regularUserToken}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query AdminListUsers {\\n  adminUsers(page: 1, pageSize: 10) {\\n    totalCount\\n    users { id email role }\\n  }\\n}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [ "{{graphqlEndpoint}}" ],
+              "path": []
+            },
+            "description": "A valid token with role USER must be rejected with FORBIDDEN \u2014 not UNAUTHORIZED."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('regularUserToken')) {",
+                  "  throw new Error('regularUserToken not set \u2013 set it in the environment with a token for a USER-role account');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns FORBIDDEN (not UNAUTHORIZED)', () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.errors).to.be.an('array').with.length.above(0);",
+                  "  const msg = b.errors[0].message;",
+                  "  pm.expect(msg).to.include('FORBIDDEN');",
+                  "  pm.expect(msg).to.not.include('UNAUTHORIZED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin \u2013 List Users (no auth)",
+          "id": "5ccbb42d-be41-4691-b472-acdc5990909a",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"query\": \"query AdminListUsers($page: Int, $pageSize: Int) {\\n  adminUsers(page: $page, pageSize: $pageSize) {\\n    users {\\n      id\\n      email\\n      displayName\\n      role\\n      status\\n      createdAt\\n    }\\n    totalCount\\n    page\\n    pageSize\\n  }\\n}\",\n  \"variables\": {\n    \"page\": 1,\n    \"pageSize\": 10\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ],
+              "path": []
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status 200\", () => pm.response.to.have.status(200));",
+                  "pm.test(\"Returns UNAUTHORIZED or FORBIDDEN error\", () => {",
+                  "  const b = pm.response.json();",
+                  "  pm.expect(b.errors).to.be.an(\"array\");",
+                  "  const codes = b.errors.map(e => e.message);",
+                  "  const hasError = codes.some(m => m.includes(\"UNAUTHORIZED\") || m.includes(\"FORBIDDEN\") || m.includes(\"authentication\"));",
+                  "  pm.expect(hasError, \"expected auth/forbidden error\").to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "\ud83d\uddd1\ufe0f Teardown",
+      "description": "Cleanup requests. Run these last to avoid breaking earlier tests.",
+      "item": [
+        {
+          "name": "Delete Account",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const token = pm.environment.get('accessToken');",
+                  "if (!token) {",
+                  "  throw new Error('[DeleteAccount pre-request] accessToken is not set. Run Login first.');",
+                  "}",
+                  "console.log('[DeleteAccount pre-request] about to permanently delete account for userId:', pm.environment.get('userId'));",
+                  "// Safety guard: only run in non-production environments.",
+                  "const base = pm.environment.get('baseUrl') || '';",
+                  "if (base.includes('production') || base.includes('prod.') || base.includes('.io')) {",
+                  "  throw new Error('[DeleteAccount pre-request] SAFETY GUARD: refusing to delete account against a production-like URL: ' + base);",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('No GraphQL errors on deleteAccount', function () {",
+                  "  pm.expect(pm.response.json().errors).to.be.undefined;",
+                  "});",
+                  "",
+                  "pm.test('data.deleteAccount is true', function () {",
+                  "  pm.expect(pm.response.json().data.deleteAccount).to.equal(true);",
+                  "});",
+                  "",
+                  "// \u2500\u2500 Clear all user-specific env vars after deletion \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+                  "pm.environment.unset('accessToken');",
+                  "pm.environment.unset('refreshToken');",
+                  "pm.environment.unset('userId');",
+                  "pm.environment.unset('userEmail');",
+                  "pm.environment.unset('userDisplayName');",
+                  "pm.environment.unset('updatedDisplayName');",
+                  "console.log('[DeleteAccount] account deleted and env vars cleared.');"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "mutation DeleteAccount {\n  deleteAccount\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Permanently delete the authenticated user's account. A production-URL safety guard in the pre-request script prevents accidental execution against live environments. On success all environment tokens and user IDs are cleared."
+          }
+        },
+        {
+          "name": "Me \u2014 After Delete (error path)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// accessToken was cleared by DeleteAccount, so this request should fail.",
+                  "console.log('[Me after delete pre-request] accessToken:', pm.environment.get('accessToken') || 'NOT SET (expected)');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP status is 200', function () {",
+                  "  pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test('errors array present after account deletion', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.errors).to.be.an('array').and.have.length.above(0);",
+                  "});",
+                  "",
+                  "pm.test('data.me is null after account deletion', function () {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.data === null || (body.data && body.data.me === null)).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "graphql",
+              "graphql": {
+                "query": "query Me {\n  me {\n    id\n    email\n    displayName\n  }\n}",
+                "variables": "{}"
+              }
+            },
+            "url": {
+              "raw": "{{graphqlEndpoint}}",
+              "host": [
+                "{{graphqlEndpoint}}"
+              ]
+            },
+            "description": "Confirm that `me` is inaccessible after the account has been deleted (no auth token in env)."
+          }
+        }
+      ]
+    }
+  ]
+}
