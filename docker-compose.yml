@@ -41,10 +41,45 @@ services:
       - "3000:3000" # Next.js'in varsayılan portu
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8080 # Frontend'in Backend'e istek atacağı adres
+      OLLAMA_URL: http://ollama:11434 # Ollama API adresi (sunucu tarafı için)
     depends_on:
       - backend # Önce backend başlasın, sonra frontend
+      - ollama  # Ollama servisi de hazır olsun
+
+  # 4. Ollama AI Servisi
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: always
+    ports:
+      - "11434:11434" # Ollama API portu
+    volumes:
+      - ollama_data:/root/.ollama # İndirilen modellerin saklanması için
+
+  # 5. Ollama Model İndirme Servisi (gemma3:1b modelini otomatik indirir)
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: ollama_init
+    depends_on:
+      - ollama
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: >
+      /bin/sh -c "
+        echo 'Ollama hazır olana kadar bekleniyor...' &&
+        until curl -sf http://ollama:11434/api/tags > /dev/null 2>&1; do
+          sleep 2
+        done &&
+        echo 'gemma3:1b modeli indiriliyor...' &&
+        ollama pull gemma3:1b &&
+        echo 'Model başarıyla indirildi!'
+      "
+    restart: on-failure
 
 volumes:
   pgdata:
+  ollama_data: # Ollama modellerinin kalıcı olarak saklandığı volume
 
 # docker-compose up --build ile tüm servisler başlar.
+# Ollama API: http://localhost:11434
+# Sohbet arayüzü: http://localhost:3000/chat

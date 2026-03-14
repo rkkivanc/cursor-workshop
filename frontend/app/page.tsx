@@ -33,6 +33,12 @@ export default function Home() {
             </a>{" "}
             center.
           </p>
+          <a
+            href="/chat"
+            className="flex h-12 items-center justify-center gap-2 rounded-full bg-green-600 px-6 text-base font-medium text-white transition-colors hover:bg-green-700"
+          >
+            💬 Ollama ile Sohbet Et (gemma3:1b)
+          </a>
         </div>
         <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
           <a
