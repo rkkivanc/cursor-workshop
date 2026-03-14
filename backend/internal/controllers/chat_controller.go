@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -49,6 +50,13 @@ type sseToken struct {
 
 const defaultChatModel = "Llama-3.1-8B-Instruct-q4f32_1"
 
+// modelsResponse describes a minimal OpenAI-compatible /v1/models response.
+type modelsResponse struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
 // HandleChat handles POST /api/chat.
 // It accepts a message and standup context, calls the active local LLM endpoint,
 // and streams the response back as Server-Sent Events (SSE) with one token per event.
@@ -86,8 +94,15 @@ func HandleChat(w http.ResponseWriter, r *http.Request) {
 	// Build the system message with the standup context embedded.
 	systemContent := buildSystemContent(reqBody.Context)
 
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+
+	// Resolve the concrete model ID from the LLM's /v1/models endpoint.
+	modelID := resolveChatModel(r.Context(), client, activeEndpoint)
+
 	llmReq := chatCompletionRequest{
-		Model: defaultChatModel,
+		Model: modelID,
 		Messages: []chatMessage{
 			{
 				Role:    "system",
@@ -105,10 +120,6 @@ func HandleChat(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to encode LLM request")
 		return
-	}
-
-	client := &http.Client{
-		Timeout: 30 * time.Second,
 	}
 
 	url := strings.TrimRight(activeEndpoint, "/") + "/v1/chat/completions"
@@ -202,6 +213,38 @@ func buildSystemContent(ctx chatContext) string {
 	}
 
 	return b.String()
+}
+
+// resolveChatModel queries the LLM's /v1/models endpoint and returns the first
+// available model ID. If anything fails, it falls back to defaultChatModel.
+func resolveChatModel(ctx context.Context, client *http.Client, baseEndpoint string) string {
+	url := strings.TrimRight(baseEndpoint, "/") + "/v1/models"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return defaultChatModel
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return defaultChatModel
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return defaultChatModel
+	}
+
+	var mr modelsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&mr); err != nil {
+		return defaultChatModel
+	}
+
+	if len(mr.Data) == 0 || strings.TrimSpace(mr.Data[0].ID) == "" {
+		return defaultChatModel
+	}
+
+	return mr.Data[0].ID
 }
 
 func streamTokensAsSSE(w http.ResponseWriter, flusher http.Flusher, content string) {

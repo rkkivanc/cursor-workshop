@@ -124,11 +124,6 @@ export default function Home() {
     standup.today.length > 0 ||
     standup.blockers.length > 0;
 
-  const standupContext = useMemo(
-    () => (hasStandup ? buildPlainText(standup) : ""),
-    [standup, hasStandup]
-  );
-
   const handleGenerateStandup = useCallback(async () => {
     if (!repoInput.trim() || !tokenInput.trim()) {
       setStandupError("Please enter both a repo and GitHub token.");
@@ -269,7 +264,11 @@ export default function Home() {
           },
           body: JSON.stringify({
             message: userMessage.content,
-            context: standupContext,
+            context: {
+              yesterday: standup.yesterday ?? [],
+              today: standup.today ?? [],
+              blockers: standup.blockers ?? [],
+            },
           }),
         });
 
@@ -359,7 +358,7 @@ export default function Home() {
         setIsStreaming(false);
       }
     },
-    [chatInput, hasStandup, standupContext]
+    [chatInput, hasStandup, standup]
   );
 
   const handleConnectedModel = useCallback(
