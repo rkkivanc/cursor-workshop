@@ -1,11 +1,9 @@
 package controllers
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os/exec"
 	"time"
 
 	"workshop-backend/internal/services"
@@ -71,9 +69,10 @@ func HandleLLMConnect(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleLLMDownload handles POST /api/llm/download.
-// It runs "mlc_llm serve" as a subprocess and streams its stdout as
-// Server-Sent Events (SSE) to the client, with each line wrapped as:
-//   data: {"progress": "..."}
+// For the workshop setup, the actual model download and serving are handled
+// by the separate mlc-llm service (Docker container). This endpoint streams
+// Server-Sent Events (SSE) to guide the user to start mlc-llm and then waits
+// until the provider is detected as running.
 func HandleLLMDownload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -90,48 +89,67 @@ func HandleLLMDownload(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
-	cmd := exec.CommandContext(r.Context(), "mlc_llm", "serve")
+	// In this workshop setup, the backend container does NOT include the
+	// mlc_llm binary. Instead, the mlc-llm Docker service is responsible for
+	// downloading and serving the model on port 11434.
+	writeSSEProgress(
+		w,
+		flusher,
+		"To download and run the recommended model, start the mlc-llm container (e.g. `docker compose --profile mlc up -d mlc-llm`). Waiting for mlc-llm on http://localhost:11434 ...",
+	)
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		writeSSEError(w, flusher, fmt.Sprintf("failed to create stdout pipe: %v", err))
-		return
-	}
+	// Poll provider discovery until mlc-llm is reported as running or the
+	// request context is cancelled / times out.
+	start := time.Now()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 
-	if err := cmd.Start(); err != nil {
-		writeSSEError(w, flusher, fmt.Sprintf("failed to start mlc_llm: %v", err))
-		return
-	}
+	for {
+		select {
+		case <-r.Context().Done():
+			writeSSEError(w, flusher, "Download was cancelled or timed out while waiting for mlc-llm.")
+			time.Sleep(200 * time.Millisecond)
+			return
+		case <-ticker.C:
+			providers := services.DiscoverLLMProviders(r.Context())
 
-	writeSSEProgress(w, flusher, "Starting mlc_llm serve...")
+			var mlc *services.LLMProvider
+			for i := range providers {
+				if providers[i].Name == "mlc-llm" {
+					mlc = &providers[i]
+					break
+				}
+			}
 
-	scanner := bufio.NewScanner(stdout)
-	// Increase the scanner buffer in case lines are long.
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 1024*1024)
+			if mlc == nil {
+				writeSSEProgress(
+					w,
+					flusher,
+					"Still waiting for mlc-llm to be discoverable...",
+				)
+				continue
+			}
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
+			if mlc.Status == "running" {
+				elapsed := time.Since(start).Round(time.Second)
+				writeSSEProgress(
+					w,
+					flusher,
+					fmt.Sprintf("mlc-llm is running (detected after %s).", elapsed),
+				)
+				// Short window to let clients receive the final events.
+				time.Sleep(200 * time.Millisecond)
+				return
+			}
+
+			elapsed := time.Since(start).Round(time.Second)
+			writeSSEProgress(
+				w,
+				flusher,
+				fmt.Sprintf("mlc-llm not running yet (waited %s)...", elapsed),
+			)
 		}
-		writeSSEProgress(w, flusher, line)
 	}
-
-	if err := scanner.Err(); err != nil {
-		writeSSEError(w, flusher, fmt.Sprintf("stream error: %v", err))
-	}
-
-	// Wait for the command to exit.
-	err = cmd.Wait()
-	if err != nil {
-		writeSSEError(w, flusher, fmt.Sprintf("mlc_llm exited with error: %v", err))
-	} else {
-		writeSSEProgress(w, flusher, "mlc_llm serve completed")
-	}
-
-	// Give clients a short window to receive the final events.
-	time.Sleep(200 * time.Millisecond)
 }
 
 type sseProgress struct {

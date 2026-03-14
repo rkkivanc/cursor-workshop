@@ -49,7 +49,7 @@ func DiscoverLLMProviders(ctx context.Context) []LLMProvider {
 	providers := []LLMProvider{
 		{
 			Name:        "mlc-llm",
-			Endpoint:    "http://localhost:8080",
+			Endpoint:    "http://localhost:11434",
 			Status:      statusNotFound,
 			Models:      []string{},
 			Recommended: true,
@@ -84,7 +84,7 @@ func DiscoverLLMProviders(ctx context.Context) []LLMProvider {
 	}
 
 	probes := []probeConfig{
-		{index: 0, url: "http://localhost:8080/v1/models", kind: "openai"},
+		{index: 0, url: "http://localhost:11434/v1/models", kind: "openai"},
 		{index: 1, url: "http://localhost:11434/api/tags", kind: "ollama"},
 		{index: 2, url: "http://localhost:1234/v1/models", kind: "openai"},
 		{index: 3, url: "http://localhost:8081/v1/models", kind: "openai"},
