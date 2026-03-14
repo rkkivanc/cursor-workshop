@@ -1,97 +1,50 @@
+version: '3.8'
+
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: workshop_postgres
-    restart: unless-stopped
+  # 1. Veritabanı Servisi (PostgreSQL)
+  db:
+    image: postgres:15-alpine
+    container_name: pg_database
+    restart: always
     environment:
-      POSTGRES_USER: masterfabric
-      POSTGRES_PASSWORD: masterfabric
-      POSTGRES_DB: masterfabric_basic
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: mydatabase
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U masterfabric -d masterfabric_basic"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - pgdata:/var/lib/postgresql/data # Konteyner kapansa bile verilerin silinmemesi için
 
-  redis:
-    image: redis:7-alpine
-    container_name: workshop_redis
-    restart: unless-stopped
-    command: redis-server --save 60 1 --loglevel warning
-    ports:
-      - "6380:6379"
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  rabbitmq:
-    image: rabbitmq:3.13-management-alpine
-    container_name: workshop_rabbitmq
-    restart: unless-stopped
-    environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    ports:
-      - "5673:5672"
-      - "15673:15672"
-    volumes:
-      - rabbitmq_data:/var/lib/rabbitmq
-    healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
-      interval: 15s
-      timeout: 10s
-      retries: 5
-
+  # 2. Go Backend Servisi
   backend:
     build:
-      context: ./backend
-      dockerfile: deployments/Dockerfile
-    container_name: workshop_backend
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    environment:
-      SERVER_PORT: 8080
-      DATABASE_DSN: postgres://masterfabric:masterfabric@postgres:5432/masterfabric_basic?sslmode=disable
-      REDIS_ADDR: redis:6379
-      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
-      RABBITMQ_ENABLED: "true"
-      RABBITMQ_EXCHANGE: masterfabric.events
-      JWT_SECRET: change-me-in-production-at-least-32-chars
-      JWT_ACCESS_TTL: 15m
-      JWT_REFRESH_TTL: 168h
-      LOG_LEVEL: info
-      LOG_FORMAT: json
+      context: ./backend # Go projenin bulunduğu klasörün adı
+      dockerfile: Dockerfile
+    container_name: go_backend
+    restart: always
     ports:
-      - "8080:8080"
+      - "8080:8080" # Go uygulamasının çalıştığı port (kendi portuna göre değiştirebilirsin)
+    environment:
+      # Go'nun veritabanına bağlanması için gereken adres ('db' ismi yukarıdaki servis adından gelir)
+      DATABASE_URL: postgres://myuser:mypassword@db:5432/mydatabase?sslmode=disable
+    depends_on:
+      - db # Önce veritabanı başlasın, sonra Go başlasın
 
+  # 3. Next.js Frontend Servisi (Opsiyonel)
   frontend:
     build:
-      context: ./frontend
+      context: ./frontend # Next.js projenin bulunduğu klasörün adı
       dockerfile: Dockerfile
-    container_name: workshop_frontend
-    restart: unless-stopped
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8080
+    container_name: next_frontend
+    restart: always
     ports:
-      - "3000:3000"
+      - "3000:3000" # Next.js'in varsayılan portu
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080 # Frontend'in Backend'e istek atacağı adres
     depends_on:
-      - backend
+      - backend # Önce backend başlasın, sonra frontend
 
 volumes:
-  postgres_data:
-  redis_data:
-  rabbitmq_data:
+  pgdata:
+
+# docker-compose up --build ile tüm servisler başlar.
